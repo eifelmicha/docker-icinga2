@@ -1,8 +1,7 @@
-
 [[ -z ${MYSQL_HOST} ]] && return
 
 MYSQL_OPTS="--host=${MYSQL_HOST} --user=${MYSQL_ROOT_USER} --password=${MYSQL_ROOT_PASS} --port=${MYSQL_PORT}"
-
+MYSQL_UOPTS="--host=${MYSQL_HOST} --user=${IDO_USER} --password=${IDO_PASSWORD} --port=${MYSQL_PORT}"
 
 # Version compare function
 # 'stolen' from https://github.com/psi-4ward/docker-icinga2/blob/master/rootfs/init/mysql_setup.sh
@@ -32,15 +31,45 @@ version_compare () {
   fi
 }
 
-# create IDO database schema
+# create IDO database user
 #
-create_schema() {
+create_user() {
 
   enable_icinga_feature ido-mysql
 
   # check if database already created ...
   #
-  query="SELECT TABLE_SCHEMA FROM information_schema.tables WHERE table_schema = \"${IDO_DATABASE_NAME}\" limit 1;"
+  query="SHOW DATABASES;"
+
+  status=$(mysql ${MYSQL_UOPTS} --batch --execute="${query}")
+
+  if [[ $(echo "${status}" | wc -w) -eq 0 ]]
+  then
+    # user isn't created
+    # well, i do my job ...
+    #
+    log_info "create User ignore Errors if already exists"
+
+    (
+      echo "CREATE USER '${IDO_USER}'@'%' IDENTIFIED BY '${IDO_PASSWORD}';"
+      echo "FLUSH PRIVILEGES;"
+    ) | mysql ${MYSQL_OPTS}
+
+    if [[ $? -eq 1 ]]
+    then
+      log_error "failed to create user: '${IDO_USER}'"
+      exit 1
+    fi
+  fi
+}
+
+# create IDO database schema
+#
+create_db() {
+
+  # check if database already created ...
+  #
+  query="SHOW DATABASES LIKE '${IDO_DATABASE_NAME}'"
 
   status=$(mysql ${MYSQL_OPTS} --batch --execute="${query}")
 
@@ -50,22 +79,35 @@ create_schema() {
     # well, i do my job ...
     #
     log_info "create IDO database '${IDO_DATABASE_NAME}'"
-
     (
-      echo "--- create user '${IDO_DATABASE_NAME}'@'%' IDENTIFIED BY '${IDO_PASSWORD}';"
       echo "CREATE DATABASE IF NOT EXISTS ${IDO_DATABASE_NAME};"
-      echo "GRANT SELECT, INSERT, UPDATE, DELETE, DROP, CREATE VIEW, INDEX, EXECUTE ON ${IDO_DATABASE_NAME}.* TO 'icinga2'@'%' IDENTIFIED BY '${IDO_PASSWORD}';"
-      echo "GRANT SELECT, INSERT, UPDATE, DELETE, DROP, CREATE VIEW, INDEX, EXECUTE ON ${IDO_DATABASE_NAME}.* TO 'icinga2'@'$(hostname -i)' IDENTIFIED BY '${IDO_PASSWORD}';"
-      echo "GRANT SELECT, INSERT, UPDATE, DELETE, DROP, CREATE VIEW, INDEX, EXECUTE ON ${IDO_DATABASE_NAME}.* TO 'icinga2'@'$(hostname -s)' IDENTIFIED BY '${IDO_PASSWORD}';"
-      echo "GRANT SELECT, INSERT, UPDATE, DELETE, DROP, CREATE VIEW, INDEX, EXECUTE ON ${IDO_DATABASE_NAME}.* TO 'icinga2'@'$(hostname -f)' IDENTIFIED BY '${IDO_PASSWORD}';"
+      echo "GRANT SELECT, INSERT, UPDATE, DELETE, DROP, CREATE VIEW, INDEX, EXECUTE ON ${IDO_DATABASE_NAME}.* TO '${IDO_USER}'@'%';"
       echo "FLUSH PRIVILEGES;"
     ) | mysql ${MYSQL_OPTS}
 
     if [[ $? -eq 1 ]]
     then
-      log_error "can't create database '${IDO_DATABASE_NAME}'"
+      log_error "failed to create database: '${IDO_DATABASE_NAME}'"
       exit 1
     fi
+  fi
+}
+
+# create IDO database schema
+#
+create_schema() {
+
+  # check if schema is already created ...
+  #
+  query="SELECT TABLE_SCHEMA FROM information_schema.tables WHERE table_schema = \"${IDO_DATABASE_NAME}\" limit 1;"
+
+  status=$(mysql ${MYSQL_OPTS} --batch --execute="${query}")
+
+  if [[ $(echo "${status}" | wc -w) -eq 0 ]]
+  then
+    # Schema isn't created
+    # well, i do my job ...
+    #
 
     insert_schema
   fi
@@ -146,11 +188,23 @@ create_config() {
 library "db_ido_mysql"
 
 object IdoMysqlConnection "ido-mysql" {
-  user     = "icinga2"
-  password = "${IDO_PASSWORD}"
-  host     = "${MYSQL_HOST}"
-  database = "${IDO_DATABASE_NAME}"
-  port     = "${MYSQL_PORT}"
+  user      = "${IDO_USER}"
+  password  = "${IDO_PASSWORD}"
+  host      = "${MYSQL_HOST}"
+  database  = "${IDO_DATABASE_NAME}"
+  port      = "${MYSQL_PORT}"
+  enable_ha = ${MYSQL_IDO_HA}
+
+  cleanup = {
+    downtimehistory_age = ${MYSQL_IDOC_DHA}
+    contactnotifications_age = ${MYSQL_IDOC_CNA}
+    acknowledgements_age = ${MYSQL_IDOC_ACK}
+    eventhandlers_age = ${MYSQL_IDOC_EVH}
+    flappinghistory_age = ${MYSQL_IDOC_FHA}
+    hostchecks_age = ${MYSQL_IDOC_HCA}
+    notifications_age = ${MYSQL_IDOC_NA}
+  }
+
 }
 EOF
 
@@ -165,6 +219,8 @@ EOF
 
 . /init/wait_for/mysql.sh
 
+create_user
+create_db
 create_schema
 update_schema
 create_config

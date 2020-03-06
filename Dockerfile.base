@@ -57,6 +57,7 @@ RUN \
   fi && \
   echo " => ${ID} - ${DIST}" && \
   echo "deb http://packages.icinga.com/${ID} icinga-${DIST} main" > "/etc/apt/sources.list.d/${DIST}-icinga.list" && \
+  echo 'en_US.UTF-8 UTF-8' >> /etc/locale.gen && \
   apt-get update && \
   apt-get install \
     --assume-yes \
@@ -64,11 +65,14 @@ RUN \
       icinga2-bin \
       icinga2-ido-mysql \
       monitoring-plugins \
+      bc \
       dnsutils \
+      expect \
       file \
       fping \
       inotify-tools \
       jq \
+      locales \
       netcat-openbsd \
       psmisc \
       pwgen \
@@ -77,11 +81,13 @@ RUN \
       tzdata \
       unzip \
       xz-utils && \
+  locale-gen && update-locale LANG=en_US.UTF-8 && \
   mkdir -p /etc/icinga2/objects.d && \
   mkdir -p /run/icinga2/cmd && \
   mkdir -p /etc/icinga2/zones.d/global-templates && \
   mkdir -p /etc/icinga2/zones.d/director-global && \
   cp /etc/icinga2/zones.conf /etc/icinga2/zones.conf-distributed && \
+  mv /etc/icinga2/conf.d/{commands,groups,notifications,templates}.conf /etc/icinga2/zones.d/global-templates && \
   apt-get remove \
     --assume-yes \
     --purge \
@@ -91,6 +97,7 @@ RUN \
     --assume-yes && \
   rm -rf \
     /tmp/* \
+    /etc/icinga2/conf.d/* \
     /var/cache/debconf/* \
     /usr/share/doc/* \
     /root/.gem \

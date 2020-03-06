@@ -31,7 +31,8 @@ do
     --silent \
     "${curl_opts}" \
     --header 'Accept: application/json' \
-    "https://localhost:5665/v1/status/ApiListener")
+    "https://${ICINGA2_MASTER}:5665/v1/status/IcingaApplication")
+
 
   result=${?}
 
