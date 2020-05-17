@@ -1,6 +1,5 @@
 # assemble container
 FROM    debian:buster-slim
-LABEL   maintainer="Michael Schmitz <s_michael1@gmx.de>"
 
 # image config
 EXPOSE 5665
