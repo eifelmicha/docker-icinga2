@@ -1,4 +1,3 @@
-
 # docker-icinga2
 
 creates several containers with different icinga2 characteristics:
@@ -8,20 +7,10 @@ creates several containers with different icinga2 characteristics:
 
 ---
 
-# Status
-
-[![Docker Pulls](https://img.shields.io/docker/pulls/bodsch/docker-icinga2.svg?branch)][hub]
-[![Image Size](https://images.microbadger.com/badges/image/bodsch/docker-icinga2.svg?branch)][microbadger]
-[![Build Status](https://travis-ci.org/bodsch/docker-icinga2.svg?branch)][travis]
-
-[hub]: https://hub.docker.com/r/bodsch/docker-icinga2/
-[microbadger]: https://microbadger.com/images/bodsch/docker-icinga2
-[travis]: https://travis-ci.org/bodsch/docker-icinga2
-
 # Base Distribution
-After a long time with _alpine_ as the base I had to go back to a _debian based_ distribution. I couldn't run Icinga stable with the musl lib. :(
+Debian is used as base system.
 
-The current Dockerfiles are structured so that you can use both `debian` (`9-slim`) and/or `ubuntu` (`18.10`).
+
 
 # Build
 You can use the included Makefile.
@@ -98,6 +87,8 @@ The actuall Container Supports a stable MySQL Backend to store all needed Datas 
 | :--------------------------------- | :-------------       | :-----------                                                    |
 | `ICINGA2_MASTER`                   | -                    | The Icinga2-Master FQDN for a Satellite Node                    |
 | `ICINGA2_PARENT`                   | -                    | The Parent Node for an Cluster Setup (not yet implemented)      |
+| `AGENT_HEALTH_CHECK_SEC`           | ´20s`                | Check Interval for the "cluster-zone" check                     |
+| `AGENT_HEALTH_RETRY_SEC`           | ´5s`                 | Retry Interval for the "cluster-zone" check                     |
 | `MULTI_MASTER`                     | ´false`              | Wether to use HA Setup or not                                   |
 | `HA_MASTER1`                       | -                    | IP /DNS of Master1      |
 | `HA_MASTER2`                       | -                    | IP /DNS of Master2      |
@@ -110,7 +101,7 @@ The actuall Container Supports a stable MySQL Backend to store all needed Datas 
 | Environmental Variable             | Default Value        | Description                                                     |
 | :--------------------------------- | :-------------       | :-----------                                                    |
 | `MYSQL_HOST`                       | -                    | MySQL Host                                                      |
-| `MYSQL_PORT`                       | `3306`               | MySQL Port                                                      |
+| `MYSQL_PORT`                       | `3306`               | MySQL Port, set this explicitly!                                |
 | `MYSQL_ROOT_USER`                  | `root`               | MySQL root User                                                 |
 | `MYSQL_ROOT_PASS`                  | *randomly generated* | MySQL root password                                             |
 | `IDO_USER`                         | `icinga2`            | User  Name for IDO                                              |
@@ -130,6 +121,7 @@ The actuall Container Supports a stable MySQL Backend to store all needed Datas 
 | :--------------------------------- | :-------------       | :-----------                                                    |
 | `ICINGA2_API_USERS`                | -                    | comma separated List to create API Users.<br>The Format are `username:password`<br>(e.g. `admin:admin,dashing:dashing` and so on)                  |
 | `ICINGA2_API_PROM_USER`            | -                    | comma separated List to create ReadOnly API Users for e.g. Prometheus |
+| `ICINGA2_API_HACHECK_USER`         | -                    | lsit of Ha-Check API Users for Icinga2, Hostnames start with ^HA-Check |
 
 ## support Carbon/Graphite
 
@@ -138,6 +130,8 @@ The actuall Container Supports a stable MySQL Backend to store all needed Datas 
 |                                    |                      |                                                                 |
 | `CARBON_HOST`                      | -                    | hostname or IP address where Carbon/Graphite daemon is running  |
 | `CARBON_PORT`                      | `2003`               | Carbon port for graphite                                        |
+| `CARBON_TRESHOLDS`                 | ´false`              | Send additional threshold metrics. Defaults to false.           |
+| `CARBON_METADATA`                  | ´false`              | Send additional metadata metrics. Defaults to false.            |
 
 ## notifications over SMTP
 
@@ -161,5 +155,12 @@ The actuall Container Supports a stable MySQL Backend to store all needed Datas 
 | `INFLUXDB_DB`                      | `icinga2`            | InfluxDB Database Name |
 | `INFLUXDB_USER`                    | -                    | InfluxDB Username |
 | `INFLUXDB_PASS`                    | -                    | InfluxDB Password |
+| `INFLUXDB_SSL`                     | ´false`              | Whether to use a TLS stream. |
+| `INFLUXDB_SSLCACERT`               | -                    | Path to CA certificate to validate the remote host. |
+| `INFLUXDB_SSLCERT`                 | -                    | Path to host certificate to present to the remote host for mutual verification. |
+| `INFLUXDB_SSLKEY`                  | -                    | Path to host key to accompany the ssl_cert. |
+| `INFLUXDB_TRESHOLDS`               | ´false`              | Whether to send warn, crit, min & max tagged data. |
+| `INFLUXDB_METADATA`                | ´false`              | Whether to send check metadata e.g. states, execution time, latency etc. |
+
 
 ![master-satellite](doc/assets/master-satellite.jpg)

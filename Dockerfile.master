@@ -1,92 +1,141 @@
-ARG BUILD_IMAGE
-# hadolint ignore=DL3006
-FROM $BUILD_IMAGE
+# assemble container
+FROM    debian:buster-slim
+LABEL   maintainer="Michael Schmitz <s_michael1@gmx.de>"
 
-ARG BUILD_DATE
-ARG BUILD_VERSION
-ARG ICINGA2_VERSION
-ARG CERT_SERVICE_TYPE
-ARG CERT_SERVICE_VERSION
-
-ENV \
-  TERM=xterm \
-  DEBIAN_FRONTEND=noninteractive \
-  TZ='Europe/Berlin'
-
-EXPOSE 5665 8080
-
-# ---------------------------------------------------------------------------------------
-
-COPY build/ruby-icinga-cert-service      /tmp/ruby-icinga-cert-service
-
-WORKDIR /tmp
-
-# hadolint ignore=DL3003,DL3008,DL3014
-RUN \
-  export ICINGA2_TYPE=Master && \
-  apt-get install \
-    --assume-yes \
-    --no-install-recommends  \
-      libffi-dev \
-      g++ \
-      make \
-      git \
-      libssl-dev \
-      ruby-dev \
-      bind9utils \
-      bsd-mailx \
-      mariadb-client \
-      nagios-nrpe-server \
-      openssl \
-      ruby \
-      msmtp \
-      msmtp-mta && \
-  echo 'gem: --no-document' >> /etc/gemrc && \
-  gem install --quiet --no-rdoc --no-ri \
-    io-console bundler && \
-  bash /tmp/ruby-icinga-cert-service/bin/installer.sh && \
-  apt-get remove \
-    --assume-yes \
-    --purge \
-      apt-utils \
-      libffi-dev \
-      gcc \
-      make \
-      git \
-      gnupg \
-      libssl-dev \
-      ruby-dev \
-      python3-pip && \
-  rm -f /etc/apt/sources.list.d/* && \
-  apt-get clean && \
-  apt autoremove \
-    --assume-yes && \
-  rm -rf \
-    /tmp/* \
-    /var/cache/debconf/* \
-    /usr/share/doc/* \
-    /root/.gem \
-    /root/.cache \
-    /root/.bundle 2> /dev/null && \
-  echo "export ICINGA2_TYPE=${ICINGA2_TYPE}"       >> /etc/profile.d/icinga2.sh
-
+# image config
+EXPOSE 5665
 WORKDIR /etc/icinga2
 
-# ---------------------------------------------------------------------------------------
+# variables
+ARG     BUILD_DATE
+ARG     BUILD_VERSION
+ARG     ICINGA2_VERSION
 
-LABEL \
-  version="${BUILD_VERSION}" \
-  maintainer="Bodo Schulz <s_michael1@gmx.de>" \
-  org.label-schema.build-date=${BUILD_DATE} \
-  org.label-schema.name="Icinga2 Docker Image" \
-  org.label-schema.vcs-ref=${VCS_REF} \
-  org.label-schema.description="Inofficial Icinga2 Docker Image" \
-  org.label-schema.url="https://www.icinga.org/" \
-  org.label-schema.vcs-url="https://gitlab.com/olemisea/icinga2" \
-  org.label-schema.vendor="Michael Siebertz" \
-  org.label-schema.version=${ICINGA2_VERSION} \
-  org.label-schema.schema-version="1.0" \
-  com.microscaling.docker.dockerfile="/Dockerfile" \
-  com.microscaling.license="GNU General Public License v3.0"
+ENV     TERM=xterm \
+        DEBIAN_FRONTEND=noninteractive \
+        TZ='Europe/Berlin' \
+        APT_KEY_DONT_WARN_ON_DANGEROUS_USAGE=1 \
+        ICINGA2_TYPE=Master
 
-# ---------------------------------------------------------------------------------------
+# install basic required utils
+RUN     chsh -s /bin/bash \
+&&      ln -sf /bin/bash /bin/sh \
+&&      apt-get update \
+&&      apt-get -y install --no-install-recommends \
+                apt-transport-https \
+                ca-certificates \
+                curl \
+                gnupg \
+                lsb-release \
+                wget \
+&&      wget -O - https://packages.icinga.com/icinga.key | apt-key add - \
+&&      echo "deb https://packages.icinga.com/debian icinga-$(lsb_release -sc) main" > /etc/apt/sources.list.d/icinga.list \
+&&      echo "deb-src https://packages.icinga.com/debian icinga-$(lsb_release -sc) main" >> /etc/apt/sources.list.d/icinga.list \
+&&      wget -O - https://mariadb.org/mariadb_release_signing_key.asc | apt-key add - \
+&&      echo "deb [arch=amd64] http://mirror.netcologne.de/mariadb/repo/10.4/debian $(lsb_release -sc) main" >> /etc/apt/sources.list.d/mariadb.list \
+&&      apt-get update \
+&&      apt-get -y install --no-install-recommends \
+                apt-transport-https \
+                bc \
+                bind9-host \
+                bind9utils \
+                bsd-mailx \
+                dnsutils \
+                expect \
+                file \
+                fping \
+                gettext-base \
+                inotify-tools \
+                jq \
+                locales \
+                mariadb-client \
+                monitoring-plugins \
+                msmtp \
+                msmtp-mta \
+                nagios-nrpe-server \
+                netcat-openbsd \
+                openssl \
+                psmisc \
+                pwgen \
+                python3.7-minimal \
+                libtext-english-perl \
+                tzdata \
+                unzip \
+                xz-utils \
+&&      echo 'en_US.UTF-8 UTF-8' >> /etc/locale.gen \
+&&      sed -i -e 's/# en_US.UTF-8 UTF-8/en_US.UTF-8 UTF-8/' /etc/locale.gen \
+&&      sed -i -e 's/# de_DE.UTF-8 UTF-8/de_DE.UTF-8 UTF-8/' /etc/locale.gen \
+&&      dpkg-reconfigure --frontend=noninteractive locales \
+&&      locale-gen && update-locale LANG=en_US.UTF-8 \
+#
+# upgrade system (incl. updated packages from php repo)
+&&      apt-get update \
+&&      apt-get upgrade -y \
+#
+# add s6
+&&      curl -L https://github.com/just-containers/s6-overlay/releases/download/v1.22.1.0/s6-overlay-amd64.tar.gz \
+        | tar xz -C / \
+#
+# install icinga2 packages
+&&      apt-get install -y --no-install-recommends \
+                icinga2-bin \
+                icinga2-ido-mysql
+#
+# Clean up icinga2 folders
+#
+RUN     mkdir -p /etc/icinga2/objects.d \
+&&      mkdir -p /run/icinga2/cmd \
+&&      mkdir -p /etc/icinga2/zones.d/global-templates \
+&&      mkdir -p /etc/icinga2/zones.d/director-global \
+&&      cp /etc/icinga2/zones.conf /etc/icinga2/zones.conf-distributed \
+&&      mv /etc/icinga2/conf.d/{commands,groups,notifications,templates}.conf /etc/icinga2/zones.d/global-templates \
+&&      rm -rf \
+          /tmp/* \
+          /etc/icinga2/conf.d/* \
+          /var/cache/debconf/* \
+          /usr/share/doc/* \
+          /root/.gem \
+          /root/.cache \
+          /root/.bundle 2> /dev/null \
+&&      find /var/log -type f -print0 | while IFS= read -r -d '' i; do echo "" > "${i}"; done \
+&&      echo "" \
+&&      command -v icinga2 \
+&&      icinga2 --version \
+&&      icinga2 daemon --validate \
+&&      icinga2 feature list \
+&&      echo "" \
+&&      export ICINGA2_VERSION=$(icinga2 --version | head -n1 | awk -F 'version: ' '{printf $2}' | awk -F '-' '{print $1}' | sed 's|r||') \
+&&      echo "export BUILD_DATE=${BUILD_DATE}"            > /etc/profile.d/icinga2.sh \
+&&      echo "export BUILD_VERSION=${BUILD_VERSION}"     >> /etc/profile.d/icinga2.sh \
+&&      echo "export ICINGA2_VERSION=${ICINGA2_VERSION}" >> /etc/profile.d/icinga2.sh \
+&&      echo "export ICINGA2_TYPE=${ICINGA2_TYPE}"       >> /etc/profile.d/icinga2.sh
+#
+# cleanup apt mess
+RUN     apt-get clean \
+&&      rm -rf \
+                /var/lib/apt/lists/* \
+                /tmp/* \
+                /var/tmp/*
+
+# TODO revert once old init is fixed
+RUN     mv /init /init-s6
+ENTRYPOINT [ "/init-s6" ]
+
+ADD     build/check_mem      /usr/lib/nagios/plugins/check_mem
+ADD     build/check_ssl_cert /usr/lib/nagios/plugins/check_ssl_cert
+ADD     etc/  /etc/
+ADD     init/  /init/
+ADD     usr/bin/vercomp  /usr/bin/vercomp
+ADD     usr/lib/monitoring-plugins  /usr/lib/monitoring-plugins/
+ADD     usr/lib/nagios/plugins  /usr/lib/nagios/plugins/
+ADD     services.d      /etc/services.d
+ADD     cont-init.d     /etc/cont-init.d/
+
+VOLUME ["/etc/icinga2", "/var/lib/icinga2", "/var/spool/icinga2", "/var/cache/icinga2"]
+
+HEALTHCHECK \
+  --interval=30s \
+  --timeout=2s \
+  --retries=10 \
+  --start-period=15s \
+  CMD /init/healthcheck.sh
